@@ -2,6 +2,7 @@
 *.o
 *.so
 *.a
+*~
 Makefile.in
 aclocal.m4
 ar-lib
@@ -16,3 +17,10 @@ install-sh
 ltmain.sh
 m4/
 missing
+.deps
+libtool
+depcomp
+compile_commands.json
+.cache
+config.status
+Makefile
