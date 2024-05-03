@@ -51,6 +51,7 @@ namespace ELB {
 			void runWorker();
 			void stopWorker();
 			bool quit(_GdkEventAny* event);
+			void help();
 
 			std::string m_kstarsName = "org.kde.kstars";
 			std::string m_capturePath = "/KStars/Ekos/Capture";
@@ -66,6 +67,7 @@ namespace ELB {
 			Gtk::TextView *m_tvLog;
 			Gtk::Label *m_labelQueueSize, *m_labelSuccessSize, *m_labelFailureSize, *m_labelProcessing;
 			Gtk::Spinner *m_spinnerProcessing;
+			Gtk::Button *m_buttonHelp;
 			Glib::Dispatcher m_logDispatcher;
 
 			std::queue<FrameData> m_fileQueue;

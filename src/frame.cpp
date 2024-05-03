@@ -1,4 +1,9 @@
 #include "frame.h"
+#include "gtkmm/button.h"
+#include "gtkmm/dialog.h"
+#include "gtkmm/enums.h"
+#include "gtkmm/messagedialog.h"
+#include "gtkmm/widget.h"
 
 namespace ELB {
 
@@ -10,6 +15,7 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	builder->get_widget("labelFailureSize", m_labelFailureSize);
 	builder->get_widget("labelProcessing", m_labelProcessing);
 	builder->get_widget("spinnerProcessing", m_spinnerProcessing);
+	builder->get_widget("buttonLBHelp", m_buttonHelp);
 	m_dbus = Gio::DBus::Connection::get_sync(Gio::DBus::BUS_TYPE_SESSION);
 	if ( ! m_dbus ) {
 		showError("DBUS Error", "Error connecting to DBUS!");
@@ -26,6 +32,7 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 			""
 			);
 	signal_delete_event().connect(sigc::mem_fun(*this, &FrmMain::quit));
+	m_buttonHelp->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::help));
 	Glib::signal_timeout().connect([this]() mutable {
 			if ( m_processing.get() ) {
 				m_labelProcessing->set_text("Processing");
@@ -50,6 +57,30 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 }
 
 FrmMain::~FrmMain() {
+}
+
+void FrmMain::help() {
+	Glib::ustring msg =
+		"For the upload to app.lightbucket.co to work correctly you need to "
+		"enter your credentials here. These consist of your lightbucket "
+		"username and an API key. You can get this information by visiting "
+		"https://app.lightbucket.co/api_credentials. By clicking the \"Save\" "
+		"button the uploader will remember your credentials and load them "
+		"automatically when it starts up.\n\n"
+		"Do you want to visit this website now?"
+		;
+	m_dialog.reset(new Gtk::MessageDialog(*this, msg, false,
+				Gtk::MessageType::MESSAGE_INFO, Gtk::ButtonsType::BUTTONS_YES_NO,
+				true));
+	m_dialog->set_title("Lightbucket Credentials");
+	m_dialog->set_modal(true);
+	m_dialog->signal_response().connect([this](int response) {
+			if ( response == Gtk::ResponseType::RESPONSE_YES ) {
+				show_uri("https://app.lightbucket.co/api_credentials", GDK_CURRENT_TIME);
+			}
+			m_dialog->hide();
+			});
+	m_dialog->show();
 }
 
 void FrmMain::stopWorker() {
