@@ -16,6 +16,9 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	builder->get_widget("labelProcessing", m_labelProcessing);
 	builder->get_widget("spinnerProcessing", m_spinnerProcessing);
 	builder->get_widget("buttonLBHelp", m_buttonHelp);
+	builder->get_widget("buttonLBSave", m_buttonSave);
+	builder->get_widget("entryLBUser", m_entryUser);
+	builder->get_widget("entryLBKey", m_entryKey);
 	m_dbus = Gio::DBus::Connection::get_sync(Gio::DBus::BUS_TYPE_SESSION);
 	if ( ! m_dbus ) {
 		showError("DBUS Error", "Error connecting to DBUS!");
@@ -33,6 +36,7 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 			);
 	signal_delete_event().connect(sigc::mem_fun(*this, &FrmMain::quit));
 	m_buttonHelp->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::help));
+	m_buttonSave->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::saveConfig));
 	Glib::signal_timeout().connect([this]() mutable {
 			if ( m_processing.get() ) {
 				m_labelProcessing->set_text("Processing");
@@ -53,7 +57,53 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 			}, 100);
 	m_labelProcessing->set_text("Idle");
 	m_spinnerProcessing->stop();
+	initConfig();
 	m_workerThread = std::thread(&FrmMain::runWorker, this);
+}
+
+void FrmMain::initConfig() {
+	std::string user, key, more;
+	const gchar *args[3];
+	args[0] = g_get_user_config_dir();
+	args[1] = "ekoslightbucket.conf";
+	args[2] = NULL;
+	m_configFile = std::string(g_build_filenamev((gchar **) args));
+	std::ifstream stream(m_configFile);
+	if ( ! stream.is_open() ) {
+		log("No exiting configuration available\n");
+		return;
+	}
+	std::getline(stream, user);
+	std::getline(stream, key);
+	std::getline(stream, more);
+	if ( user == "" || key == "" || ! stream.eof()) {
+		log("Corrupted configuration detected\n");
+		char buff[512];
+		snprintf(buff, sizeof(buff),
+				"Your configuration file (%s) is corrupted and will be deleted. "
+				"You will have to re-enter your username and API key.",
+				m_configFile.c_str());
+		showError("Corrupted Configuration", buff);
+		stream.close();
+		std::remove(m_configFile.c_str());
+		return;
+	}
+	m_entryUser->set_text(user);
+	m_entryKey->set_text(key);
+	log("Found existing configuration\n");
+}
+
+void FrmMain::saveConfig() {
+	if ( m_entryUser->get_text() == "" || m_entryKey->get_text() == "" ) {
+		showError("Configuration Error",
+				"You need to enter the username and API key in order to save it");
+		return;
+	}
+	log("Saving configuration\n");
+	std::ofstream stream(m_configFile);
+	stream << m_entryUser->get_text() << std::endl;
+	stream << m_entryKey->get_text() << std::endl;
+	stream.close();
 }
 
 FrmMain::~FrmMain() {

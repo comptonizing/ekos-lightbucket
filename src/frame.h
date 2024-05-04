@@ -6,6 +6,8 @@
 #include <thread>
 #include <chrono>
 #include <ctime>
+#include <fstream>
+#include <cstdio>
 
 #include <gtkmm.h>
 #include <glib.h>
@@ -52,11 +54,14 @@ namespace ELB {
 			void stopWorker();
 			bool quit(_GdkEventAny* event);
 			void help();
+			void initConfig();
+			void saveConfig();
 
 			std::string m_kstarsName = "org.kde.kstars";
 			std::string m_capturePath = "/KStars/Ekos/Capture";
 			std::string m_captureInterface = "org.kde.kstars.Ekos.Capture";
 			std::string m_signalName = "captureComplete";
+			std::string m_configFile;
 			Glib::RefPtr<Gtk::Builder> builder;
 			Glib::RefPtr<Gio::DBus::Connection> m_dbus;
 			Glib::RefPtr<Gio::DBus::Proxy> m_proxy;
@@ -64,10 +69,11 @@ namespace ELB {
 			std::unique_ptr<Gtk::MessageDialog> m_dialog;
 			std::unique_ptr<Gtk::MessageDialog> m_finishDialog;
 			Gtk::Label *m_lblEkosStatus;
+			Gtk::Entry *m_entryUser, *m_entryKey;
 			Gtk::TextView *m_tvLog;
 			Gtk::Label *m_labelQueueSize, *m_labelSuccessSize, *m_labelFailureSize, *m_labelProcessing;
 			Gtk::Spinner *m_spinnerProcessing;
-			Gtk::Button *m_buttonHelp;
+			Gtk::Button *m_buttonHelp, *m_buttonSave;
 			Glib::Dispatcher m_logDispatcher;
 
 			std::queue<FrameData> m_fileQueue;

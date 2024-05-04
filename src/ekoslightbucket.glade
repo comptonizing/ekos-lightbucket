@@ -95,6 +95,8 @@ Author: Philipp Weber
                     <property name="can-focus">True</property>
                     <property name="hexpand">True</property>
                     <property name="has-frame">False</property>
+                    <property name="primary-icon-tooltip-text" translatable="yes">When you are logged into lightbucket you can get your username from this URL:
+https://app.lightbucket.co/api_credentials</property>
                     <property name="placeholder-text" translatable="yes">Your Lightbucket Username</property>
                   </object>
                   <packing>
@@ -106,6 +108,7 @@ Author: Philipp Weber
                   <object class="GtkEntry" id="entryLBKey">
                     <property name="visible">True</property>
                     <property name="can-focus">True</property>
+                    <property name="hexpand">True</property>
                     <property name="has-frame">False</property>
                     <property name="primary-icon-tooltip-text" translatable="yes">When you are logged into lightbucket you can get your API key from this URL:
 https://app.lightbucket.co/api_credentials</property>
