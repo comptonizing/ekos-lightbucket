@@ -1,14 +1,13 @@
 #include "image.h"
-#include <memory>
 
 namespace ELB {
 
 int FFPtr::bayerNameToValue(const std::string &name) {
 	static std::map<std::string, int> map = {
-		{ "RGGB", cv::COLOR_BayerRG2BGR },
-		{ "GRBG", cv::COLOR_BayerGR2BGR },
-		{ "BGGR", cv::COLOR_BayerBG2BGR },
-		{ "GBRG", cv::COLOR_BayerGB2BGR },
+		{ "RGGB", cv::COLOR_BayerRG2RGB },
+		{ "GRBG", cv::COLOR_BayerGR2RGB },
+		{ "BGGR", cv::COLOR_BayerBG2RGB },
+		{ "GBRG", cv::COLOR_BayerGB2RGB },
 	};
 	if ( ! map.count(name) ) {
 		throw std::runtime_error(std::string("Unsupported Bayer pattern: ") + name);
@@ -58,17 +57,16 @@ FFPtr::FFPtr(const std::string &fname) {
 	auto rawData = std::make_unique<pixfloat[]>(m_nPix);
 	read_subset(fitsfloat, fpix, lpix, inc, &nullval, rawData.get(), &anynull);
 
-	auto intData = std::make_unique<uint16_t[]>(m_nPix);
     m_scale = 1. / (1<<bitpix) * (1<<16);
-	auto * __restrict__ __rawData = rawData.get();
-	auto * __restrict__ __intData = intData.get();
-	for ( long ii=0; ii<m_nPix; ii++ ) {
-		__intData[ii] = __rawData[ii] * m_scale;
+	m_data = std::make_unique<cv::Mat>(m_dimX, m_dimY, CV_16U);
+	for ( long ii=0; ii<m_dimX; ii++) {
+		for ( long jj=0; jj<m_dimY; jj++) {
+			m_data->at<ushort>(ii, jj) = rawData[ii*m_dimY + jj] * m_scale;
+		}
 	}
-	rawData.reset();
-	m_data = std::make_unique<cv::Mat>(m_dimX, m_dimY, cvfloat, intData.get());
-	intData.reset();
 	debayerIfNecessary();
+	stretch();
+	resample();
 }
 
 void FFPtr::debayerIfNecessary() {
@@ -84,6 +82,53 @@ void FFPtr::debayerIfNecessary() {
 	auto debayered = std::make_unique<cv::Mat>();
 	cv::cvtColor(*m_data.get(), *debayered, pattern);
 	m_data = std::move(debayered);
+}
+
+// PixInsight MTF style autostretch
+void FFPtr::stretch() {
+	double targetBkg = 0.25;
+	double shadows_clip = -1.25;
+	std::vector<cv::Mat> channels;
+	cv::split(*m_data.get(), channels);
+	for ( auto &channel : channels ) {
+		channel.convertTo(channel, CV_32F, 1./(1<<16));
+		cv::Mat tmp = channel.clone();
+		std::vector<float> flat(tmp.begin<float>(), tmp.end<float>());
+		std::sort(flat.begin(), flat.end());
+		float median = flat[flat.size() / 2]; // Ignore the special median cause of flat.size() % 2 == 0
+		float avgdev = medianDeviation(flat, median);
+		float c0 = median + shadows_clip * avgdev;
+		float m = (targetBkg - 1) * (median - c0) / ((((2 * targetBkg) - 1) * (median - c0)) - targetBkg);
+		for ( long ii=0; ii<m_dimX; ii++ ) {
+			for ( long jj=0; jj<m_dimY; jj++ ) {
+				double val = channel.at<float>(ii,jj);
+				if ( val < c0 ) {
+					channel.at<float>(ii,jj) = 0;
+					continue;
+				}
+				if ( val == m ) {
+					channel.at<float>(ii,jj) = 0.5;
+					continue;
+				}
+				float out = (m - 1) * (val - c0)/(1 - c0) / ((((2 * m) - 1) * (val - c0)/(1 - c0)) - m);
+				channel.at<float>(ii,jj) = out;
+			}
+		}
+		channel.convertTo(channel, CV_16U, 1<<16);
+	}
+	cv::merge(channels, *m_data.get());
+}
+
+void FFPtr::resample() {
+	long targetWidth = 300;
+	long targetHeight = m_dimX * targetWidth / m_dimY;
+	m_data->convertTo(*m_data.get(), CV_8U, 1./(1<<8));
+	cv::resize(*m_data.get(), *m_data.get(), cv::Size(targetWidth, targetHeight),
+			0., 0., cv::InterpolationFlags::INTER_LANCZOS4);
+	m_dimX = targetWidth;
+	m_dimY = targetHeight;
+	m_nPix = m_dimX * m_dimY;
+	cv::imwrite("/tmp/debug.tiff", *m_data.get());
 }
 
 FFPtr::~FFPtr() {
@@ -157,6 +202,14 @@ pixfloat FFPtr::mean() {
 		}
 	}
 	return mean / m_nPix;
+}
+
+float FFPtr::medianDeviation(const std::vector<float> &data, float median) {
+	double ret = 0;
+	for ( const auto &val : data ) {
+		ret += fabs(val - median);
+	}
+	return ret / data.size();
 }
 
 FFPtr::FitsError::FitsError(const std::string &message, int status) : std::runtime_error(message) {

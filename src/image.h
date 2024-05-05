@@ -55,6 +55,7 @@ namespace ELB {
         private:
 			void debayerIfNecessary();
 			void stretch();
+			void resample();
             std::string fitsError();
             std::string m_fname;
             fitsfile *m_ffptr = NULL;
@@ -63,5 +64,7 @@ namespace ELB {
 			double m_scale;
 			std::unique_ptr<cv::Mat> m_data;
 			std::string m_bayerPat = "";
+
+			static float medianDeviation(const std::vector<float> &data, float median);
     };
 }
