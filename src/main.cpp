@@ -5,7 +5,7 @@ int main(int argc, char *argv[]) {
 	ELB::FrmMain *frm = nullptr;
 	try {
 	Glib::RefPtr<Gtk::Builder> builder =
-		Gtk::Builder::create_from_file(GLADEDIR "/ekoslightbucket.glade");
+		Gtk::Builder::create_from_string(__guiData);
 		builder->get_widget_derived("main", frm);
 	} catch ( const Glib::Error &e ) {
 		std::cerr << std::string("Could not run the main program: ") + e.what() << std::endl;

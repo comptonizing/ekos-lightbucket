@@ -1,8 +1,8 @@
-data_DATA=ekoslightbucket.glade
-datadir=@datadir@
-
 bin_PROGRAMS=ekoslightbucket
 
-ekoslightbucket_SOURCES=main.cpp frame.h frame.cpp image.h image.cpp
+gui.h: ekoslightbucket.glade Makefile
+	echo -e "#include <iostream>\nconst std::string __guiData = R\"(" > $@
+	cat $< >> $@
+	echo ")\";" >> $@
 
-ekoslightbucket_CXXFLAGS=-DGLADEDIR=\"@datadir@\"
+ekoslightbucket_SOURCES=gui.h main.cpp frame.h frame.cpp image.h image.cpp

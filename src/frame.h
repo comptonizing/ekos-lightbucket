@@ -15,6 +15,8 @@
 #include "common.h"
 #include "image.h"
 
+#include "gui.h"
+
 #define RED_BEGIN "\033[1;31m"
 #define RED_END "\033[0m"
 
