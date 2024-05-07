@@ -1,9 +1,9 @@
 #include "frame.h"
-#include "gtkmm/button.h"
-#include "gtkmm/dialog.h"
-#include "gtkmm/enums.h"
-#include "gtkmm/messagedialog.h"
-#include "gtkmm/widget.h"
+#include "Base64.h"
+#include <exception>
+#include <memory>
+#include <opencv2/imgcodecs.hpp>
+#include <stdexcept>
 
 namespace ELB {
 
@@ -59,6 +59,8 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	m_spinnerProcessing->stop();
 	initConfig();
 	m_workerThread = std::thread(&FrmMain::runWorker, this);
+
+	m_httpClient = std::make_unique<httplib::Client>("https://app.lightbucket.co:443");
 }
 
 void FrmMain::initConfig() {
@@ -293,7 +295,121 @@ void FrmMain::log(const std::string &msg, bool showTimestamp) {
 }
 
 void FrmMain::processFile(const FrameData &frameData) {
-	Image a(frameData.m_fileName);
+	std::string user, key;
+	static sigc::connection conn;
+	conn.disconnect();
+	// We need to synchronize this because the dispatched task runs asynchroniously
+	// 1. Worker thread locks
+	// 2. Worker thread waits for lock again
+	// 3. Main thread unlocks
+	// 4. Worker thread gets the lock and unlocks again
+	std::mutex sync;
+	sync.lock();
+	conn = m_processDispatcher.connect([this, &user, &key, &sync] {
+			user = m_entryUser->get_text();
+			key = m_entryKey->get_text();
+			sync.unlock();
+			});
+	m_processDispatcher();
+	sync.lock();
+	sync.unlock();
+	if ( user == "" || key == "" ) {
+		log("Error: user name and/or key are missing!");
+		return;
+	}
+
+	double ra, dec;
+	FFPtr file(frameData.m_fileName);
+	try {
+		file.read_key("RA", TDOUBLE, &ra, NULL);
+	} catch ( const FFPtr::FitsError &e ) {
+		if ( e.status() == KEY_NO_EXIST ) {
+			file.resetStatus();
+			char buff[256];
+			snprintf(buff, sizeof(buff), "File %s lacks target information, ignoring\n", frameData.m_fileName.c_str());
+			log(buff);
+			return;
+		}
+		throw;
+	}
+	file.read_key("DEC", TDOUBLE, &dec, NULL);
+	if ( file.exposure() == NAN ) {
+		char buff[256];
+		snprintf(buff, sizeof(buff), "File %s lacks exposure information, ignoring\n", frameData.m_fileName.c_str());
+		log(buff);
+		return;
+	}
+	std::string jpg64 = file.encode();
+	nlohmann::json json;
+	if ( file.object() != "" ) {
+		json["target"]["name"] = file.object();
+	}
+	json["target"]["ra"] = ra;
+	json["target"]["dec"] = dec;
+	if ( file.rotation() == file.rotation()) {
+		json["target"]["rotation"] = file.rotation();
+	}
+
+	if ( file.instrument() != "" ) {
+		json["equipment"]["camera_name"] = file.instrument();
+	}
+	if ( file.telescope() != "" ) {
+		json["equipment"]["telescope_name"] = file.telescope();
+	}
+	if ( file.focalLength() != NAN ) {
+		json["equipment"]["focal_length"] = file.focalLength();
+		if ( file.aperture() != NAN ) {
+			json["equipment"]["focal_ratio"] = file.focalLength() / file.aperture();
+		}
+	}
+	if ( file.pixelSize() != NAN ) {
+		json["equipment"]["pixel_size"] = file.pixelSize();
+	}
+	if ( file.scale() != NAN ) {
+		json["equipment"]["pixel_scale"] = file.scale();
+	}
+
+	if ( frameData.m_hfr != -1 && frameData.m_hfr != NAN ) {
+		json["image"]["statistics"]["hfr"] = frameData.m_hfr;
+	}
+	json["image"]["statistics"]["stars"] = frameData.m_starCount;
+	json["image"]["statistics"]["mean"] = file.initialMean();
+	json["image"]["statistics"]["mean"] = frameData.m_median;
+	json["image"]["thumbnail"] = jpg64;
+	if ( file.filter() != "" ) {
+		json["image"]["filter_name"] = file.filter();
+	}
+	json["image"]["duration"] = file.exposure();
+	if ( file.gain() != NAN ) {
+		json["image"]["gain"] = file.gain();
+	}
+	if ( file.offset() != -1 ) {
+		json["image"]["offset"] = file.offset();
+	}
+	if ( file.binning() != "" ) {
+		json["image"]["binning"] = file.binning();
+	}
+	json["image"]["captured_at"] = file.time();
+
+	std::string jsonString = json.dump();
+	char authBuff[STRBUFF];
+	snprintf(authBuff, sizeof(authBuff), "%s:%s", user.c_str(), key.c_str());
+	std::string auth64 = macaron::Base64::Encode(authBuff);
+
+	httplib::Headers headers = {
+		{"Authorization", std::string("Basic ") + auth64}
+	};
+	auto result = m_httpClient->Post("/api/image_capture_complete", headers,
+			jsonString, "application/json");
+	if ( ! result ) {
+		auto error = result.error();
+		throw std::runtime_error(std::string("Error posting data to server: ") + httplib::to_string(error));
+	}
+	if ( result->status != httplib::StatusCode::OK_200 ) {
+		char buff[STRBUFF];
+		snprintf(buff, sizeof(buff), "Got HTTP response %d instead of 200", result->status);
+		throw std::runtime_error(buff);
+	}
 }
 
 void FrmMain::processIfPresent() {

@@ -8,12 +8,21 @@
 #include <ctime>
 #include <fstream>
 #include <cstdio>
+#include <exception>
 
 #include <gtkmm.h>
 #include <glib.h>
+#include <gtkmm/builder.h>
+#include <glibmm/fileutils.h>
 
+#include <opencv2/opencv.hpp>
+
+#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include "httplib.h"
 #include "common.h"
 #include "image.h"
+#include "json.hpp"
+#include "Base64.h"
 
 #include "gui.h"
 
@@ -76,7 +85,7 @@ namespace ELB {
 			Gtk::Label *m_labelQueueSize, *m_labelSuccessSize, *m_labelFailureSize, *m_labelProcessing;
 			Gtk::Spinner *m_spinnerProcessing;
 			Gtk::Button *m_buttonHelp, *m_buttonSave;
-			Glib::Dispatcher m_logDispatcher;
+			Glib::Dispatcher m_logDispatcher, m_processDispatcher;
 
 			std::queue<FrameData> m_fileQueue;
 			std::mutex m_logMutex;
@@ -87,5 +96,7 @@ namespace ELB {
 			SerialProperty<size_t> m_nSuccess = 0;
 			SerialProperty<size_t> m_nFailure = 0;
 			std::thread m_workerThread;
+
+			std::unique_ptr<httplib::Client> m_httpClient = nullptr;
 	};
 }
