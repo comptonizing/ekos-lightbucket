@@ -39,6 +39,8 @@ AC_SEARCH_LIBS([ffopen], [cfitsio], [], [AC_MSG_ERROR([libcfitsio not found!])])
 AC_SEARCH_LIBS([cvAdd], [opencv_core], [], [AC_MSG_ERROR([opencv core library not found!])])
 AC_SEARCH_LIBS([_ZN2cv8imdecodeERKNS_11_InputArrayEi], [opencv_imgcodecs], [], [AC_MSG_ERROR([opencv imgcodecs library not found!])], [])
 AC_SEARCH_LIBS([cvCircle], [opencv_imgproc], [], [AC_MSG_ERROR([opencv imgproc library not found!])])
+AC_SEARCH_LIBS([OPENSSL_atexit], [crypto], [], [AC_MSG_ERROR([crypto library not found!])])
+AC_SEARCH_LIBS([BIO_new_ssl], [ssl], [], [AC_MSG_ERROR([ssl library not found!])])
 
 PKG_CHECK_MODULES([GTK], [gtk+-3.0])
 CXXFLAGS="${CXXFLAGS} ${GTK_CFLAGS}"
