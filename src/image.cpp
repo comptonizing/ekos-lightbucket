@@ -1,5 +1,4 @@
 #include "image.h"
-#include <memory>
 
 namespace ELB {
 
@@ -69,6 +68,7 @@ FFPtr::FFPtr(const std::string &fname) {
 	}
 	debayerIfNecessary();
 	stretch();
+	blur();
 	resample();
 }
 
@@ -122,16 +122,19 @@ void FFPtr::stretch() {
 	cv::merge(channels, *m_data.get());
 }
 
+void FFPtr::blur() {
+	m_data->convertTo(*m_data.get(), CV_8U, 1./(1<<8));
+	cv::medianBlur(*m_data.get(), *m_data.get(), 21);
+}
+
 void FFPtr::resample() {
 	long targetWidth = 300;
 	long targetHeight = m_dimX * targetWidth / m_dimY;
-	m_data->convertTo(*m_data.get(), CV_8U, 1./(1<<8));
 	cv::resize(*m_data.get(), *m_data.get(), cv::Size(targetWidth, targetHeight),
 			0., 0., cv::InterpolationFlags::INTER_LANCZOS4);
 	m_dimX = targetWidth;
 	m_dimY = targetHeight;
 	m_nPix = m_dimX * m_dimY;
-	cv::imwrite("/tmp/debug.tiff", *m_data.get());
 }
 
 std::string FFPtr::encode() {

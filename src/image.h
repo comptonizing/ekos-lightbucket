@@ -74,6 +74,7 @@ namespace ELB {
         private:
 			void debayerIfNecessary();
 			void stretch();
+			void blur();
 			void resample();
             std::string fitsError();
             std::string m_fname;
