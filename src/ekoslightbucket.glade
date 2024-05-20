@@ -27,11 +27,6 @@ Author: Philipp Weber
   <!-- interface-name ekos-lightbucket -->
   <!-- interface-copyright Philipp Weber -->
   <!-- interface-authors Philipp Weber -->
-  <object class="GtkAdjustment" id="adjustment1">
-    <property name="upper">100</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">10</property>
-  </object>
   <object class="GtkWindow" id="main">
     <property name="can-focus">False</property>
     <property name="window-position">center</property>
@@ -342,6 +337,43 @@ https://app.lightbucket.co/api_credentials</property>
           <object class="GtkFrame">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
+            <property name="label-xalign">0</property>
+            <property name="shadow-type">in</property>
+            <child>
+              <object class="GtkAlignment">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="bottom-padding">8</property>
+                <property name="left-padding">10</property>
+                <property name="right-padding">10</property>
+                <child>
+                  <object class="GtkButton" id="buttonBulkUpload">
+                    <property name="label" translatable="yes">Bulk image upload</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">True</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="label">
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Bulk</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkFrame">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
             <property name="margin-start">2</property>
             <property name="margin-end">2</property>
             <property name="label-xalign">0</property>
@@ -381,7 +413,7 @@ https://app.lightbucket.co/api_credentials</property>
           <packing>
             <property name="expand">False</property>
             <property name="fill">True</property>
-            <property name="position">2</property>
+            <property name="position">3</property>
           </packing>
         </child>
       </object>
