@@ -1,8 +1,5 @@
 #include "frame.h"
 #include "Base64.h"
-#include "gtkmm/filechooser.h"
-#include "gtkmm/filechooserdialog.h"
-#include "gtkmm/messagedialog.h"
 #include <exception>
 #include <memory>
 #include <opencv2/imgcodecs.hpp>
