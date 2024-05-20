@@ -1,5 +1,8 @@
 #include "frame.h"
 #include "Base64.h"
+#include "gtkmm/filechooser.h"
+#include "gtkmm/filechooserdialog.h"
+#include "gtkmm/messagedialog.h"
 #include <exception>
 #include <memory>
 #include <opencv2/imgcodecs.hpp>
@@ -19,6 +22,10 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	builder->get_widget("buttonLBSave", m_buttonSave);
 	builder->get_widget("entryLBUser", m_entryUser);
 	builder->get_widget("entryLBKey", m_entryKey);
+	builder->get_widget("buttonBulkUpload", m_buttonBulkUpload);
+	builder->get_widget("windowBulkUpload", m_windowBulk);
+	builder->get_widget("pbBulk", m_bulkPB);
+	builder->get_widget("buttonBulkCancel", m_buttonCancelBulk);
 	m_dbus = Gio::DBus::Connection::get_sync(Gio::DBus::BUS_TYPE_SESSION);
 	if ( ! m_dbus ) {
 		showError("DBUS Error", "Error connecting to DBUS!");
@@ -37,6 +44,7 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	signal_delete_event().connect(sigc::mem_fun(*this, &FrmMain::quit));
 	m_buttonHelp->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::help));
 	m_buttonSave->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::saveConfig));
+	m_buttonBulkUpload->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::bulkUpload));
 	Glib::signal_timeout().connect([this]() mutable {
 			if ( m_processing.get() ) {
 				m_labelProcessing->set_text("Processing");
@@ -260,7 +268,7 @@ void FrmMain::showQueueWarning(int nItems) {
 					}, 100);
 				m_finishDialog->show();
 			} else {
-				this->m_dialog->hide();
+				m_dialog->hide();
 			}
 			});
 	m_dialog->show();
@@ -464,6 +472,139 @@ FrmMain::FrameData::FrameData(const Glib::ustring &fileName, int median, int sta
 	m_median = median;
 	m_starCount = starCount;
 	m_hfr = hfr;
+}
+
+void FrmMain::bulkUpload() {
+	if ( ! m_warnedBulkUpload ) {
+		m_dialog.reset(new Gtk::MessageDialog(*this,
+					"When you bulk-upload images taken in the past the "
+					"information about HFR and star count is unavailable",
+					false, Gtk::MessageType::MESSAGE_WARNING, Gtk::ButtonsType::BUTTONS_YES_NO, true));
+		m_dialog->set_title("Bulk image upload");
+		m_dialog->set_secondary_text("Do you want to continue?");
+		m_dialog->signal_response().connect([this](int response) mutable {
+				if ( response == Gtk::ResponseType::RESPONSE_YES ) {
+					m_dialog->hide();
+					m_warnedBulkUpload = true;
+					runBulkUpload();
+					return;
+				}
+				m_dialog->hide();
+				});
+		m_dialog->show();
+		return;
+	}
+	runBulkUpload();
+}
+
+void FrmMain::updateBulkProgress(double fraction) {
+	static sigc::connection conn;
+	conn.disconnect();
+	conn = m_bulkProgressDispatcher.connect([this, fraction] () {
+			m_bulkPB->set_fraction(fraction);
+			});
+	m_bulkProgressDispatcher();
+}
+
+// Copy arguments because gets out of scope from caller
+void FrmMain::processBulk(std::vector<std::string> files) {
+	static sigc::connection conn;
+	conn.disconnect();
+	conn = m_bulkFinishDispatcher.connect([this] {
+			m_bulkThread.join();
+			if ( m_bulkCancelDialog != nullptr ) {
+				m_bulkCancelDialog->hide();
+			}
+			if ( m_bulkCancelWaiting != nullptr ) {
+				m_bulkCancelWaiting->hide();
+			}
+			m_windowBulk->hide();
+			});
+	int num = files.size();
+	for (int ii=0; ii<num; ii++) {
+		char buff[STRBUFF];
+		if ( m_shutdownBulk ) {
+			break;
+		}
+		FrameData frameData(files[ii], -1, 0, 0.0);
+		try {
+			snprintf(buff, sizeof(buff), "Processing file %s\n", frameData.m_fileName.c_str());
+			log(buff);
+			processFile(frameData);
+			m_nSuccess.set(m_nSuccess.get()+1);
+		} catch ( const std::exception& e ) {
+			snprintf(buff, sizeof(buff), "Error processing file %s: %s\n",
+					frameData.m_fileName.c_str(), e.what());
+			log(buff);
+			m_nFailure.set(m_nFailure.get()+1);
+		} catch (...) {
+			snprintf(buff, sizeof(buff), "There was a serious but unknown error processing file %s\n",
+					frameData.m_fileName.c_str());
+			log(buff);
+			m_nFailure.set(m_nFailure.get()+1);
+		}
+		updateBulkProgress((ii+1.) / num);
+	}
+	m_bulkFinishDispatcher();
+}
+
+void FrmMain::launchBulkUpload(const std::vector<std::string> &files) {
+	char buff[STRBUFF];
+	snprintf(buff, sizeof(buff), "Processing %lu images\n", files.size());
+	log(buff);
+	m_shutdownBulk = false;
+	m_bulkPB->set_fraction(0.0);
+	m_buttonCancelBulk->signal_clicked().connect([this] {
+			m_bulkCancelDialog.reset(new Gtk::MessageDialog(*this,
+						"Are you sure you want to cancel bulk upload?", false,
+						Gtk::MessageType::MESSAGE_INFO, Gtk::ButtonsType::BUTTONS_YES_NO,
+						true));
+			m_bulkCancelDialog->signal_response().connect([this](int response) {
+					m_bulkCancelDialog->hide();
+					if ( response == Gtk::ResponseType::RESPONSE_YES ) {
+						m_shutdownBulk = true;
+						m_bulkCancelWaiting.reset(new Gtk::MessageDialog(*this,
+									"Waiting to cancel", false,
+									Gtk::MessageType::MESSAGE_INFO,
+									Gtk::ButtonsType::BUTTONS_NONE, true));
+						m_bulkCancelWaiting->show();
+					}
+					});
+			m_bulkCancelDialog->show();
+			});
+	m_windowBulk->show();
+	m_bulkThread = std::thread(&FrmMain::processBulk, this, files);
+}
+
+void FrmMain::runBulkUpload() {
+	m_bulkFileChooserDialog.reset(new Gtk::FileChooserDialog(
+				"Select images", Gtk::FileChooserAction::FILE_CHOOSER_ACTION_OPEN
+				));
+	m_bulkFileChooserDialog->set_transient_for(*this);
+	m_bulkFileChooserDialog->set_modal(true);
+	m_bulkFileChooserDialog->set_select_multiple(true);
+	m_bulkFileChooserDialog->add_button("Cancel", Gtk::RESPONSE_CANCEL);
+	m_bulkFileChooserDialog->add_button("Select", Gtk::RESPONSE_OK);
+
+	Glib::RefPtr<Gtk::FileFilter> fileFilter = Gtk::FileFilter::create();
+	fileFilter->set_name("Fits Files (*.fits *.fit)");
+	fileFilter->add_pattern("*.fits");
+	fileFilter->add_pattern("*.Fits");
+	fileFilter->add_pattern("*.FITS");
+	fileFilter->add_pattern("*.fit");
+	fileFilter->add_pattern("*.Fit");
+	fileFilter->add_pattern("*.FIT");
+	m_bulkFileChooserDialog->add_filter(fileFilter);
+
+	m_bulkFileChooserDialog->signal_response().connect([this](int response) {
+			m_bulkFileChooserDialog->hide();
+			if ( response != Gtk::ResponseType::RESPONSE_OK ) {
+				return;
+			}
+			launchBulkUpload(m_bulkFileChooserDialog->get_filenames());
+			});
+
+	m_bulkFileChooserDialog->show();
 }
 
 

@@ -14,8 +14,9 @@ int main(int argc, char *argv[]) {
 		std::cerr << std::string("Could not run the main program: ") + e.what() << std::endl;
 		exit(EXIT_FAILURE);
 	} catch ( ... ) {
-		std::cerr << std::string("Could not run the main program: Uknown error") << std::endl;
+		std::cerr << std::string("Could not run the main program: Unknown error") << std::endl;
 		exit(EXIT_FAILURE);
 	}
 	kit.run(*frm);
+	delete frm;
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gtkmm/filechooser.h"
+#include "gtkmm/progressbar.h"
 #include <iostream>
 #include <queue>
 #include <mutex>
@@ -67,6 +69,11 @@ namespace ELB {
 			void help();
 			void initConfig();
 			void saveConfig();
+			void bulkUpload();
+			void runBulkUpload();
+			void launchBulkUpload(const std::vector<std::string> &files);
+			void processBulk(std::vector<std::string> file); // Copy argument
+			void updateBulkProgress(double fraction);
 
 			std::string m_kstarsName = "org.kde.kstars";
 			std::string m_capturePath = "/KStars/Ekos/Capture";
@@ -79,13 +86,19 @@ namespace ELB {
 			Glib::RefPtr<Gtk::TextBuffer> m_logBuffer;
 			std::unique_ptr<Gtk::MessageDialog> m_dialog;
 			std::unique_ptr<Gtk::MessageDialog> m_finishDialog;
+			std::unique_ptr<Gtk::FileChooserDialog> m_bulkFileChooserDialog;
+			std::unique_ptr<Gtk::MessageDialog> m_bulkCancelDialog = nullptr;
+			std::unique_ptr<Gtk::MessageDialog> m_bulkCancelWaiting = nullptr;
 			Gtk::Label *m_lblEkosStatus;
 			Gtk::Entry *m_entryUser, *m_entryKey;
 			Gtk::TextView *m_tvLog;
 			Gtk::Label *m_labelQueueSize, *m_labelSuccessSize, *m_labelFailureSize, *m_labelProcessing;
 			Gtk::Spinner *m_spinnerProcessing;
-			Gtk::Button *m_buttonHelp, *m_buttonSave;
-			Glib::Dispatcher m_logDispatcher, m_processDispatcher;
+			Gtk::Button *m_buttonHelp, *m_buttonSave, *m_buttonBulkUpload, *m_buttonCancelBulk;
+			Glib::Dispatcher m_logDispatcher, m_processDispatcher, m_bulkProgressDispatcher,
+				m_bulkFinishDispatcher;
+			Gtk::Window *m_windowBulk;
+			Gtk::ProgressBar *m_bulkPB;
 
 			std::queue<FrameData> m_fileQueue;
 			std::mutex m_logMutex;
@@ -93,9 +106,12 @@ namespace ELB {
 			SerialProperty<bool> m_shutdown = false;
 			SerialProperty<bool> m_running = false;
 			SerialProperty<bool> m_processing = false;
+			SerialProperty<bool> m_warnedBulkUpload = false;
+			SerialProperty<bool> m_shutdownBulk = false;
 			SerialProperty<size_t> m_nSuccess = 0;
 			SerialProperty<size_t> m_nFailure = 0;
 			std::thread m_workerThread;
+			std::thread m_bulkThread;
 
 			std::unique_ptr<httplib::Client> m_httpClient = nullptr;
 	};
