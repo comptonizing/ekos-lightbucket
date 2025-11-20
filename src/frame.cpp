@@ -346,6 +346,8 @@ void FrmMain::processFile(const FrameData &frameData) {
 	}
 	std::string jpg64 = file.encode();
 	nlohmann::json json;
+	// Nasty!
+    json["plugin_version"] = "2.2.2";
 	if ( file.object() != "" ) {
 		json["target"]["name"] = file.object();
 	}
@@ -353,13 +355,19 @@ void FrmMain::processFile(const FrameData &frameData) {
 	json["target"]["dec"] = dec;
 	if ( file.rotation() == file.rotation()) {
 		json["target"]["rotation"] = file.rotation();
+	} else {
+		json["target"]["rotation"] = 0.0;
 	}
 
 	if ( file.instrument() != "" ) {
 		json["equipment"]["camera_name"] = file.instrument();
+	} else {
+		json["equipment"]["camera_name"] = "n/a";
 	}
 	if ( file.telescope() != "" ) {
 		json["equipment"]["telescope_name"] = file.telescope();
+	} else {
+		json["equipment"]["telescope_name"] = "n/a";
 	}
 	if ( file.focalLength() != NAN ) {
 		json["equipment"]["focal_length"] = file.focalLength();
@@ -379,11 +387,9 @@ void FrmMain::processFile(const FrameData &frameData) {
 	}
 	json["image"]["statistics"]["stars"] = frameData.m_starCount;
 	json["image"]["statistics"]["mean"] = file.initialMean();
-	json["image"]["statistics"]["mean"] = frameData.m_median;
+	json["image"]["statistics"]["median"] = frameData.m_median;
 	json["image"]["thumbnail"] = jpg64;
-	if ( file.filter() != "" ) {
-		json["image"]["filter_name"] = file.filter();
-	}
+	json["image"]["filter_name"] = file.filter();
 	json["image"]["duration"] = file.exposure();
 	if ( file.gain() != NAN ) {
 		json["image"]["gain"] = file.gain();
