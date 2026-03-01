@@ -168,7 +168,6 @@ int FFPtr::gain() {
 		}
 	}
 	m_gain = std::make_unique<int>(ret);
-	*m_gain = ret;
 	return ret;
 }
 
@@ -205,7 +204,7 @@ double FFPtr::rotation() {
 		}
 		resetStatus();
 	}
-	m_rotation = std::make_unique<double>(NAN);
+	m_rotation = std::make_unique<double>(ret);
 	return ret;
 }
 
