@@ -30,14 +30,8 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	}
 	m_logBuffer = Gtk::TextBuffer::create();
 	m_tvLog->set_buffer(m_logBuffer);
-	m_dbus->signal_subscribe(
-			sigc::mem_fun(*this, &FrmMain::onCaptureComplete),
-			m_kstarsName,
-			m_captureInterface,
-			m_signalName,
-			m_capturePath,
-			""
-			);
+        m_proxyScheduler = Gio::DBus::Proxy::create_sync(m_dbus,
+                m_kstarsName, m_schedulerPath, m_propertiesInterface);
 	signal_delete_event().connect(sigc::mem_fun(*this, &FrmMain::quit));
 	m_buttonHelp->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::help));
 	m_buttonSave->signal_clicked().connect(sigc::mem_fun(*this, &FrmMain::saveConfig));
@@ -66,6 +60,15 @@ FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refG
 	m_workerThread = std::thread(&FrmMain::runWorker, this);
 
 	m_httpClient = std::make_unique<httplib::Client>("https://app.lightbucket.co:443");
+
+	m_dbus->signal_subscribe(
+			sigc::mem_fun(*this, &FrmMain::onCaptureComplete),
+			m_kstarsName,
+			m_captureInterface,
+			m_signalName,
+			m_capturePath,
+			""
+			);
 }
 
 void FrmMain::initConfig() {
@@ -166,7 +169,7 @@ void FrmMain::onCaptureComplete(
 		const Glib::ustring &object_path,
 		const Glib::ustring &interface_name,
 		const Glib::ustring &signal_name,
-		const Glib::VariantContainerBase& parameters
+		const Glib::VariantContainerBase& parameters_real
 		) {
 	std::ignore = connection;
 	std::ignore = sender_name;
@@ -174,57 +177,75 @@ void FrmMain::onCaptureComplete(
 	std::ignore = interface_name;
 	std::ignore = signal_name;
 
-	Glib::VariantBase inside;
-	parameters.get_child(inside, 0);
+        auto parameters = parameters_real;
+        auto proxy = m_proxyScheduler;
+        m_proxyScheduler->call("Get",
+        // Begin lambda
+        [this, proxy, parameters](const Glib::RefPtr<Gio::AsyncResult>& result) {
+            auto reply = proxy->call_finish(result);
+            double ra, dec, pa;
+            ra = dec = pa = NAN;
+            try {
+                extractTargetData(reply, ra, dec, pa);
+            } catch (...) {
+                // log("Could not get scheduler information");
+                ra = dec = pa = NAN;
+            }
 
-	auto content = Glib::VariantBase::cast_dynamic<Glib::VariantContainerBase>(inside);
+	    Glib::VariantBase inside;
+	    parameters.get_child(inside, 0);
 
-	Glib::ustring fileName = "";
-	int type = -1;
-	int median = -1;
-	int starCount = -1;
-	double hfr = -1;
+	    auto content = Glib::VariantBase::cast_dynamic<Glib::VariantContainerBase>(inside);
 
-	for ( gsize ii=0; ii<content.get_n_children(); ii++ ) {
-		auto thing = Glib::VariantBase::cast_dynamic<Glib::VariantContainerBase>(content.get_child(ii));
-		Glib::VariantBase child;
-		thing.get_child(child);
-		auto name = Glib::VariantBase::cast_dynamic<Glib::Variant<Glib::ustring>>(child).get();
-		auto value = Glib::VariantBase::cast_dynamic<Glib::VariantContainerBase>(thing.get_child(1)).get_child(0);
-		if ( name == "filename" ) {
-			fileName = Glib::VariantBase::cast_dynamic<Glib::Variant<Glib::ustring>>(value).get();
-			if ( fileName == "/tmp/image.fits" ) {
-				// Preview
-				return;
-			}
-		}
-		if ( name == "type" ) {
-			type = Glib::VariantBase::cast_dynamic<Glib::Variant<int>>(value).get();
-			if ( type != 0 ) {
-				// Not a light frame
-				return;
-			}
-			continue;
-		}
-		if ( name == "median" ) {
-			median = Glib::VariantBase::cast_dynamic<Glib::Variant<int>>(value).get();
-			continue;
-		}
-		if ( name == "starCount" ) {
-			starCount = Glib::VariantBase::cast_dynamic<Glib::Variant<int>>(value).get();
-			continue;
-		}
-		if ( name == "hfr" ) {
-			hfr = Glib::VariantBase::cast_dynamic<Glib::Variant<double>>(value).get();
-			continue;
-		}
-	}
-	FrameData frameData(fileName, median, starCount, hfr);
-	char buff[256];
-	snprintf(buff, sizeof(buff), "Queueing file %s\n", fileName.c_str());
-	std::lock_guard<std::mutex> lock(m_queueMutex);
-	log(buff);
-	m_fileQueue.push(frameData);
+	    Glib::ustring fileName = "";
+	    int type = -1;
+	    int median = -1;
+	    int starCount = -1;
+	    double hfr = -1;
+
+	    for ( gsize ii=0; ii<content.get_n_children(); ii++ ) {
+	    	auto thing = Glib::VariantBase::cast_dynamic<Glib::VariantContainerBase>(content.get_child(ii));
+	    	Glib::VariantBase child;
+	    	thing.get_child(child);
+	    	auto name = Glib::VariantBase::cast_dynamic<Glib::Variant<Glib::ustring>>(child).get();
+	    	auto value = Glib::VariantBase::cast_dynamic<Glib::VariantContainerBase>(thing.get_child(1)).get_child(0);
+	    	if ( name == "filename" ) {
+	    		fileName = Glib::VariantBase::cast_dynamic<Glib::Variant<Glib::ustring>>(value).get();
+	    		if ( fileName == "/tmp/image.fits" || fileName == "" || fileName == " " ) {
+	    			// Preview
+	    			return;
+	    		}
+	    	}
+	    	if ( name == "type" ) {
+	    		type = Glib::VariantBase::cast_dynamic<Glib::Variant<int>>(value).get();
+	    		if ( type != 0 ) {
+	    			// Not a light frame
+	    			return;
+	    		}
+	    		continue;
+	    	}
+	    	if ( name == "median" ) {
+	    		median = Glib::VariantBase::cast_dynamic<Glib::Variant<int>>(value).get();
+	    		continue;
+	    	}
+	    	if ( name == "starCount" ) {
+	    		starCount = Glib::VariantBase::cast_dynamic<Glib::Variant<int>>(value).get();
+	    		continue;
+	    	}
+	    	if ( name == "hfr" ) {
+	    		hfr = Glib::VariantBase::cast_dynamic<Glib::Variant<double>>(value).get();
+	    		continue;
+	    	}
+	    }
+	    FrameData frameData(fileName, median, starCount, hfr, ra, dec, pa);
+	    char buff[256];
+	    snprintf(buff, sizeof(buff), "Queueing file %s\n", fileName.c_str());
+	    std::lock_guard<std::mutex> lock(m_queueMutex);
+	    log(buff);
+	    m_fileQueue.push(frameData);
+        },
+        // end lambda
+        m_schedulerCallArgs);
 }
 
 void FrmMain::showError(Glib::ustring title, Glib::ustring message, Glib::ustring secondaryMessage) {
@@ -338,6 +359,13 @@ void FrmMain::processFile(const FrameData &frameData) {
 		throw;
 	}
 	file.read_key("DEC", TDOUBLE, &dec, NULL);
+        if ( ! isnan(frameData.m_schedulerRa) && ! isnan(frameData.m_schedulerDec) ) {
+            log("Using target information from scheduler\n");
+            ra = frameData.m_schedulerRa;
+            dec = frameData.m_schedulerDec;
+        } else {
+            log("Target information from scheduler not available. May result in multiple targets in lightbucket\n");
+        }
 	if ( file.exposure() == NAN ) {
 		char buff[256];
 		snprintf(buff, sizeof(buff), "File %s lacks exposure information, ignoring\n", frameData.m_fileName.c_str());
@@ -347,13 +375,15 @@ void FrmMain::processFile(const FrameData &frameData) {
 	std::string jpg64 = file.encode();
 	nlohmann::json json;
 	// Nasty!
-    json["plugin_version"] = "2.2.2";
+        json["plugin_version"] = "2.2.2";
 	if ( file.object() != "" ) {
 		json["target"]["name"] = file.object();
 	}
 	json["target"]["ra"] = ra;
 	json["target"]["dec"] = dec;
-	if ( file.rotation() == file.rotation()) {
+        if ( frameData.m_schedulerPa != NAN ) {
+            json["target"]["rotation"] = frameData.m_schedulerPa;
+        } else 	if ( file.rotation() == file.rotation()) {
 		json["target"]["rotation"] = file.rotation();
 	} else {
 		json["target"]["rotation"] = 0.0;
@@ -470,11 +500,15 @@ void FrmMain::runWorker() {
 	}
 }
 
-FrmMain::FrameData::FrameData(const Glib::ustring &fileName, int median, int starCount, double hfr) {
+FrmMain::FrameData::FrameData(const Glib::ustring &fileName, int median, int starCount,
+        double hfr, double schedulerRa, double schedulerDec, double schedulerPa) {
 	m_fileName = fileName;
 	m_median = median;
 	m_starCount = starCount;
 	m_hfr = hfr;
+        m_schedulerRa = schedulerRa;
+        m_schedulerDec = schedulerDec;
+        m_schedulerPa = schedulerPa;
 }
 
 void FrmMain::bulkUpload() {
@@ -529,7 +563,7 @@ void FrmMain::processBulk(std::vector<std::string> files) {
 		if ( m_shutdownBulk ) {
 			break;
 		}
-		FrameData frameData(files[ii], -1, 0, 0.0);
+		FrameData frameData(files[ii], -1, 0, 0.0, NAN, NAN, NAN);
 		try {
 			snprintf(buff, sizeof(buff), "Processing file %s\n", frameData.m_fileName.c_str());
 			log(buff);
@@ -610,5 +644,27 @@ void FrmMain::runBulkUpload() {
 	m_bulkFileChooserDialog->show();
 }
 
+void FrmMain::extractTargetData(Glib::VariantContainerBase &reply, double &ra, double &dec, double &pa) {
+    GVariant *output = NULL;
+    if ( ! g_variant_is_of_type(reply.gobj(), G_VARIANT_TYPE_TUPLE) ) {
+        throw std::runtime_error("Received wrong type on dbus");
+    }
+    g_variant_get_child(reply.gobj(), 0, "v", &output);
+    if ( output == NULL ) {
+        throw std::runtime_error("Could not get variant child");
+    }
+    Glib::Variant<Glib::ustring> item;
+    // May throw
+    item = Glib::Variant<Glib::ustring>(output);
+    auto text = item.get();
+    if ( text.empty() || text == " " ) {
+        throw std::runtime_error("Text in callback is empty");
+    }
+    auto json = nlohmann::json::parse(text);
+    ra = json["targetRA"].template get<double>();
+    dec = json["targetDEC"].template get<double>();
+    pa = json["pa"].template get<double>();
+    pa = pa == -181. ? NAN : pa;
+}
 
 }

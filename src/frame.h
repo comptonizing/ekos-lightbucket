@@ -1,5 +1,6 @@
 #pragma once
 
+#include "glibmm/variant.h"
 #include "gtkmm/filechooser.h"
 #include "gtkmm/progressbar.h"
 #include <iostream>
@@ -11,6 +12,8 @@
 #include <fstream>
 #include <cstdio>
 #include <exception>
+
+#include <unistd.h>
 
 #include <gtkmm.h>
 #include <glib.h>
@@ -38,12 +41,18 @@ namespace ELB {
 	class FrmMain : public Gtk::ApplicationWindow {
 			class FrameData {
 				public:
-					FrameData(const Glib::ustring &fileName, int median, int starCount, double hfr);
+					FrameData(const Glib::ustring &fileName,
+                                                int median, int starCount, double hfr,
+                                                double schedulerRa, double schedulerDec,
+                                                double schedulerPa);
 					~FrameData() = default;
 					Glib::ustring m_fileName;
 					int m_median;
 					int m_starCount;
 					double m_hfr;
+                                        double m_schedulerRa;
+                                        double m_schedulerDec;
+                                        double m_schedulerPa;
 			};
 
 		public:
@@ -74,15 +83,25 @@ namespace ELB {
 			void launchBulkUpload(const std::vector<std::string> &files);
 			void processBulk(std::vector<std::string> file); // Copy argument
 			void updateBulkProgress(double fraction);
+                        void extractTargetData(Glib::VariantContainerBase &stuff, double &ra, double &dec, double &pa);
 
 			std::string m_kstarsName = "org.kde.kstars";
 			std::string m_capturePath = "/KStars/Ekos/Capture";
 			std::string m_captureInterface = "org.kde.kstars.Ekos.Capture";
 			std::string m_signalName = "captureComplete";
+                        std::string m_schedulerPath = "/KStars/Ekos/Scheduler";
+                        std::string m_propertiesInterface = "org.freedesktop.DBus.Properties";
+                        std::string m_schedulerName = "org.kde.kstars.Ekos.Scheduler";
+                        std::string m_currentJobJsonProperty = "currentJobJson";
+                        Glib::VariantContainerBase m_schedulerCallArgs = Glib::VariantContainerBase::create_tuple({
+                                Glib::Variant<Glib::ustring>::create(m_schedulerName),
+                                Glib::Variant<Glib::ustring>::create(m_currentJobJsonProperty)
+                                });
 			std::string m_configFile;
 			Glib::RefPtr<Gtk::Builder> builder;
 			Glib::RefPtr<Gio::DBus::Connection> m_dbus;
 			Glib::RefPtr<Gio::DBus::Proxy> m_proxy;
+			Glib::RefPtr<Gio::DBus::Proxy> m_proxyScheduler;
 			Glib::RefPtr<Gtk::TextBuffer> m_logBuffer;
 			std::unique_ptr<Gtk::MessageDialog> m_dialog;
 			std::unique_ptr<Gtk::MessageDialog> m_finishDialog;

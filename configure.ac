@@ -1,4 +1,4 @@
-AC_INIT([ekos-lightbucket], [0.1], [philipp@whyisitso.de])
+AC_INIT([ekos-lightbucket], [0.2], [philipp@whyisitso.de])
 
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 
