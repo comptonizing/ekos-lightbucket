@@ -385,12 +385,12 @@ void FrmMain::processFile(const FrameData &frameData) {
 	}
 	json["target"]["ra"] = ra;
 	json["target"]["dec"] = dec;
-        if ( frameData.m_schedulerPa != NAN ) {
-            json["target"]["rotation"] = frameData.m_schedulerPa;
-        } else 	if ( file.rotation() == file.rotation()) {
+	json["target"]["rotation"] = 0.0;
+	if ( ! isnan(file.rotation()) ) {
 		json["target"]["rotation"] = file.rotation();
-	} else {
-		json["target"]["rotation"] = 0.0;
+	}
+	if ( ! isnan(frameData.m_schedulerPa) ) {
+		json["target"]["rotation"] = frameData.m_schedulerPa;
 	}
 
 	if ( file.instrument() != "" ) {
