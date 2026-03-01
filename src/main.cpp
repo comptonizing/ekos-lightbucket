@@ -1,6 +1,9 @@
 #include "frame.h"
 
 int main(int argc, char *argv[]) {
+        std::locale::global(std::locale(""));
+        Gio::init();
+        Glib::init();
 	Gtk::Main kit(argc, argv);
 	ELB::FrmMain *frm = nullptr;
 	try {
