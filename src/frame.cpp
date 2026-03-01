@@ -9,6 +9,10 @@ namespace ELB {
 
 FrmMain::FrmMain(BaseObjectType* cobject, const Glib::RefPtr<Gtk::Builder>& refGlade) :
 		Gtk::ApplicationWindow(cobject), builder(refGlade) {
+	if ( getenv("ELB_DEBUG") != nullptr ) {
+		std::cout << "Setting debug" << std::endl;
+		m_debug = true;
+	}
 	builder->get_widget("textLog", m_tvLog);
 	builder->get_widget("labelQueueSize", m_labelQueueSize);
 	builder->get_widget("labelSuccessSize", m_labelSuccessSize);
@@ -432,6 +436,10 @@ void FrmMain::processFile(const FrameData &frameData) {
 	}
 	json["image"]["captured_at"] = file.time();
 
+	if ( m_debug ) {
+		std::cout << json.dump() << std::endl;
+	}
+
 	std::string jsonString = json.dump();
 	char authBuff[STRBUFF];
 	snprintf(authBuff, sizeof(authBuff), "%s:%s", user.c_str(), key.c_str());
@@ -440,6 +448,10 @@ void FrmMain::processFile(const FrameData &frameData) {
 	httplib::Headers headers = {
 		{"Authorization", std::string("Basic ") + auth64}
 	};
+	if ( getenv("ELB_NOUPLOAD") != nullptr ) {
+		std::cout << "Skipping upload" << std::endl;
+		return;
+	}
 	auto result = m_httpClient->Post("/api/image_capture_complete", headers,
 			jsonString, "application/json");
 	if ( ! result ) {

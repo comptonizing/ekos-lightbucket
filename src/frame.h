@@ -85,6 +85,8 @@ namespace ELB {
 			void updateBulkProgress(double fraction);
                         void extractTargetData(Glib::VariantContainerBase &stuff, double &ra, double &dec, double &pa);
 
+			bool m_debug = false;
+
 			std::string m_kstarsName = "org.kde.kstars";
 			std::string m_capturePath = "/KStars/Ekos/Capture";
 			std::string m_captureInterface = "org.kde.kstars.Ekos.Capture";
